@@ -1,1 +1,5 @@
+function [test]= data
+Example_1 = readtable('Example_1.csv')
+test=Example_1
+end
 
