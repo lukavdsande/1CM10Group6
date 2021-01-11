@@ -1,1 +1,162 @@
-test
+function [PH1] = PHM(J,O,DD,PT,RT,T,TSS)
+Objlist=[ ];
+CTlist=[ ] ;
+[~,order]=sort(DD);
+DD=DD(order);
+J=J(order);
+O=O(order);
+T=T(order);
+TSS=TSS(order);
+PT=PT(order);
+RT=RT(order);
+th=72;
+Machines=6;
+CA=80;
+for run = 1:20
+    tStart= cputime;
+    M1=[ ];
+    Mo=[   ];
+    Ma=zeros(1,Machines);
+    V=0;
+    Z=0;
+    n=140;
+    for i=1:n
+        for j = 1:length(J(i))
+            if isempty(M1)
+                M1(end+1,:)=[1,T(i,j),TSS(i,j)];
+            elseif ismember(T(i,j),M1(:,2))== false
+                A=100;
+                for k=1:Machines
+                    B=nnz(M1(:,1)==k);
+                    if B<A
+                        A=B;
+                        MA=k;
+                    end
+                end
+                if A==0
+                    M1(end+1,:)=[MA,T(i,j),TSS(i,j)];
+                else
+                    C=CA-sum(M1(M1(:,1)==MA,3));
+                    if TSS(i,j)<=C
+                        M1(end+1,:)=[MA,T(i,j),TSS(i,j)];
+                    else
+                        TW=0;
+                        for k=1:Machines
+                            C=CA-sum(M1(M1(:,1)==k,3));
+                            if TSS(i,j)<=C && TW==0
+                                M1(end+1,:)=[k,T(i,j),TSS(i,j)];
+                                TW=1;
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    for i=1:n
+        for j = 1:length(J(i))
+            if ismember(T(i,j),M1(:,2))== true
+                S=0;
+                M=min(M1(M1(:,2)==T(i,j),1));
+                B=M;
+                for k=1:Machines
+                    if ismember(T(i,j),M1(M1(:,1)==k,2))==true
+                        if Ma(k)<Ma(B)
+                            B=k;
+                        end
+                    elseif O(i,j)>1
+                        e=find(J==J(i),1);
+                        if max([Ma(k),RT(i,j),E(e)])+th<= max(Ma(B),RT(i,j))
+                            B=k;
+                        end
+                    else
+                        if (max(Ma(k),RT(i,j))+th)<= max(Ma(B),RT(i,j))
+                            B=k;
+                        end
+                    end
+                end
+                if B~=M
+                    C=CA-sum(M1(M1(:,1)==B,3));
+                    if C<TSS(i,j)
+                        while C<TSS(i,j)
+                            L=M1(M1(:,1)==B,:);
+                            k = randperm(size(L,1));
+                            R=L(k(1),2);
+                            q = M1(:,1)==B;
+                            Q = M1(:,2)==R;
+                            D=any(q&Q,2);
+                            M1(D,:)=[];
+                            C=CA-sum(M1(M1(:,1)==B,3));
+                        end
+                    end
+                    M1(end+1,:)=[B,T(i,j),TSS(i,j)];
+                    Z=Z+1;
+                    S=1;
+                end
+                Mo(end+1,:)=[B,J(i,j),O(i,j)];
+                if O(i,j)==1
+                    E(i) = max([Ma(B),RT(i,j)])+PT(i,j)+S;
+                else
+                    e=find(J==J(i),1);
+                    E(i) = max([Ma(B),RT(i,j),E(e)])+PT(i,j)+S;
+                end
+                Ma(B)=E(i);
+            else
+                B=1;
+                for k=1:Machines
+                    if Ma(k)< Ma(B)
+                        B=k;
+                    end
+                end
+                C=CA-sum(M1(M1(:,1)==B,3));
+                if C<TSS(i,j)
+                    while C<TSS(i,j)
+                        L=M1(M1(:,1)==B,:);
+                        k = randperm(size(L,1));
+                        R= L(k(1),2);
+                        q = M1(:,1)==B;
+                        Q = M1(:,2)==R;
+                        D=any(q&Q,2);
+                        M1(D,:)=[];
+                        C=CA-sum(M1(M1(:,1)==B,3));
+                    end
+                end
+                S=1;
+                Z=Z+1;
+                Mo(end+1,:)=[B,J(i,j),O(i,j)];
+                M1(end+1,:)=[B,T(i,j),TSS(i,j)];
+                if O(i,j)==1
+                    E(i) = max([Ma(B),RT(i,j)])+PT(i,j)+S;
+                else
+                    e=find(J==J(i),1);
+                    E(i) = max([Ma(B),RT(i,j),E(e)])+PT(i,j)+S;
+                end
+                Ma(B)=E(i);
+            end
+        end
+        V= V+max([0,(Ma(B)-DD(i,j))]);
+    end
+    tEnd = cputime;
+    CT = tEnd-tStart;
+    Objlist(run,:)= V+Z;
+    CTlist(run,:)= CT; 
+end
+ObjMean = mean(Objlist)
+ObjStd = std(Objlist)
+ 
+CTMean = mean(CTlist)
+CTStd = std(CTlist)
+
+
+
+    
+
+  
+                
+                
+                
+                
+                
+                    
+
+
