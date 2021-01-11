@@ -1,1 +1,346 @@
-test
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jan  4 17:02:16 2021
+
+@author: 20174298
+"""
+import gurobipy as grb
+import pandas as pd
+import time
+import csv
+import statistics 
+
+#objective = []
+#times = []
+#for i in range(10):
+start_time = time.time()
+
+
+data= pd.read_csv('6M140_15.csv')
+
+
+LPModel = grb.Model('LPModel')
+LPModel.modelSense = grb.GRB.MINIMIZE
+LPModel.Params.TimeLimit= 3600
+#LPModel.Params.SolutionLimit = 1
+#LPModel.Params.PoolSearchMode = 2
+#LPModel.Params.outputFlag = 0
+LPModel.update()
+
+
+I = list(data['I'])
+J= data['J']
+RT = data['RT']
+PT = data['PT']
+DD = data['DD']
+T = list(data['T'])
+copyT = T.copy()
+uniqueT = []
+for i in copyT:
+    if i not in uniqueT:
+        uniqueT.append(i)
+    
+
+TSS = data['TSS']
+O = list(zip(I,J)) #list of operations
+OO = O.copy()
+operations = O.copy()
+#OTS = list(zip(O,T)) #list of operations with required toolset 
+M = [1,2,3,4,5,6] #machine numbers    
+uniqueI = []
+
+for i in I:
+    if i not in uniqueI:
+        uniqueI.append(i)
+        n= list(range(0, len(uniqueI)+1))
+#print(n)
+#for i in uniqueI:
+#     n[i] = I.count(i) #so that ni is actual ni
+#print(n)
+
+
+LPModel.update()
+  
+
+#set constants
+wd = 1 #weight tardiness
+ws = 1 #weight setup
+tst = 1 #toolsetuptime
+C= 80 #machine capacity
+
+LPModel.update()
+
+#create decision variables
+s = LPModel.addVars(O, vtype=grb.GRB.CONTINUOUS, lb=0, name = "s" ) #startime
+e = LPModel.addVars(O, vtype=grb.GRB.CONTINUOUS, lb=0, name = "e") #ending time
+td = LPModel.addVars(O, vtype=grb.GRB.CONTINUOUS, lb=0, name = "td") #tardiness
+z = LPModel.addVars(O, uniqueT,lb=0, ub=1, vtype=grb.GRB.CONTINUOUS, name = "z") #if toolset t is inserted at the start of processing of operation
+beta = LPModel.addVars(O,M, vtype= grb.GRB.BINARY, name = 'beta')
+y = LPModel.addVars(O, uniqueT, vtype=grb.GRB.BINARY, name = 'y') #if toolset is in the magazine during processing of op
+x = LPModel.addVars(O, OO, M, vtype= grb.GRB.BINARY, name = 'x')    
+#check if these can be integers    
+LPModel.update()
+
+
+#create objective
+obj = wd * grb.quicksum(td[(i,j)] for (i,j) in O) + ws *tst * grb.quicksum(z[(i,j,t)] for (i,j) in O for t in uniqueT)
+LPModel.setObjective(obj,grb.GRB.MINIMIZE)
+LPModel.update()
+
+#define constraints
+
+#constraint 2 and 3
+for o in O:
+    i = o[0]
+    j= o[1]
+    LPModel.addConstr(td[(i,j)] >= e[(i,j)] - DD[O.index((i,j))], name= 'tardiness_'+ str(o))
+    LPModel.addConstr(td[(i,j)]>= 0, name= 'nonnegative_tardiness_'+ str(o))
+
+LPModel.update()
+
+#constraint 4 
+for o in O: 
+    i = o[0]
+    j= o[1]
+    LPModel.addConstr( grb.quicksum(x[(i,j,oi,oj,m)] for (oi,oj) in OO for m in M if (i,j)!=(oi,oj)) <= 1, name= 'predecessor_'+ str(o))
+
+LPModel.update()
+    
+#constraint 5
+for oo in OO:
+    oi= oo[0]
+    oj = oo[1]
+    LPModel.addConstr(grb.quicksum(x[(i,j,oi,oj,m)] for (i,j) in O for m in M if (i,j)!=(oi,oj))<=1, name = 'successor_' +str(oo))
+
+LPModel.update()
+    
+#constraint 6 
+for o in O:
+    i = o[0]
+    j = o[1]
+    LPModel.addConstr(grb.quicksum(beta[(i,j,m)] for m in M) == 1, name = 'onemachine')
+
+LPModel.update()
+    
+#constraint 7
+for oo in OO:
+    oi= oo[0]
+    oj = oo[1]
+    for o in O:
+        if o != oo: 
+            i = o[0]
+            j = o[1]
+        
+            for m in M:
+            
+                LPModel.addConstr(2* x[(i,j,oi,oj,m)] <= beta[(i,j,m)] + beta[(oi,oj,m)], name = 'consecutive on same machine_' + str(o) + str(oo) + str(m) )
+        else:
+            continue    
+
+LPModel.update()
+            
+#constraint 8
+for m in M:
+    LPModel.addConstr(grb.quicksum(x[(i,j,oi,oj,m)] for (i,j) in O for (oi,oj) in OO if (i,j) != (oi,oj))+ 1 >= grb.quicksum(beta[i,j,m] for (i,j) in O), name = 'consecutive on same machine_'+ str(m))
+               
+        
+LPModel.update()
+    
+#constraint 9
+for o in O:
+    i = o[0]
+    j = o[1]
+    a = RT[O.index(o)]
+    LPModel.addConstr(s[(i,j)] >= a, name = 'release time')
+    
+LPModel.update()
+    
+#constraint 10
+L = max(RT) + sum(PT) + tst * len(O) * C
+for o in O:
+    i = o[0]
+    j = o[1]
+    for oo in OO:
+        oi= oo[0]
+        oj = oo[1]
+        for m in M:
+            if o!= oo:
+                LPModel.addConstr(s[(i,j)]+ L* (1- x[(oi,oj,i,j,m)])>= e[(oi,oj)])
+            else:
+                continue
+            
+LPModel.update()
+
+                   
+#constraint 11
+for o in O: 
+    i = o[0]
+    j = o[1]
+    LPModel.addConstr(e[(i,j)] >= s[(i,j)] + PT[O.index((i,j))] + tst * grb.quicksum(z[(i,j,t)] for t in uniqueT), name = 'completion of operation ' + str(o))
+
+LPModel.update()
+
+#constraint 12:
+for o in O:
+    i=o[0]
+    j = o[1]
+    jplus=o[1] +1
+    oplus = (i,jplus)
+    #print(oplus)
+    if oplus in O: 
+  
+        LPModel.addConstr(e[(i,j)]<= s[(i,jplus)], name = 'same job' + str(o))
+    else:
+        continue
+    
+LPModel.update()
+
+
+
+#constraint 13
+for o in O:
+    i = o[0]
+    j = o[1]
+    
+    LPModel.addConstr(grb.quicksum(y[(i,j,t)] * TSS[T.index(t)] for t in uniqueT) <= C, name = 'capacity')
+
+LPModel.update()
+    
+#constraint 14
+for o in O:
+    i = o[0]
+    j = o[1]
+    for oo in OO:
+        oi= oo[0]
+        oj = oo[1]
+        if o!=oo:
+            #print(i,j,oi,oj)
+            for m in M:
+                for t in uniqueT:
+                    LPModel.addConstr(x[(oi,oj,i,j,m)]+y[(i,j,t)]- y[(oi,oj,t)]<= z[(i,j,t)]+1, name= 'toolswitch')
+        else:
+            continue
+        
+        
+LPModel.update()
+           
+                
+#contraint 15
+for o in O:
+    i = o[0]
+    j = o[1]
+    t = T[O.index(o)]
+    LPModel.addConstr(y[(i,j,t)] == 1, name = 'presence of toolset')
+
+LPModel.update() 
+    
+#constraint 16: 
+for o in O:
+    for t in T:
+        i = o[0]
+        j = o[1]
+        tij = T[O.index(o)]
+        if t != tij:
+            LPModel.addConstr(z[(i,j,t)] == 0, name = 'toolswitch immediately performed')
+        else: 
+            continue 
+        
+LPModel.update()    
+    
+# for o in O: should be about j
+#     i = o[0]
+#     j = o[1]
+#     ts =  T[O.index(o)]
+#     print(ts)
+#     ot = uniqueT.remove(ts)
+#     print(uniqueT)
+#     for t in uniqueT: 
+    
+#         LPModel.addConstr(z[i,j,t]  == 0)
+    
+#     uniqueT.extend([ts])
+
+
+#constraint 21: in addvars
+
+
+#constraint 22: symmetry-breaking constraint
+for m in range(2,len(M)+1):
+    LPModel.addConstr(grb.quicksum(beta[(i,j,m-1)] for (i,j) in O) >= grb.quicksum(beta[(i,j,m)] for (i,j) in O), name = 'symmetry')
+    
+
+
+    
+    
+    
+        
+        
+    
+
+    
+
+
+
+
+LPModel.update()
+LPModel.optimize()
+
+# obj = LPModel.getObjective()
+# objective.append(obj.getValue())
+
+# LPModel.write("LPModel6M140.lp")
+# if LPModel.status == 2: 
+#         print('--> '+LPModel.ModelName+' model is solved optimally in ',round((time.time()-start_time),2),'secs.')
+#         print('--> Objective value: ',round(LPModel.objVal,3))
+
+        
+     
+# else:
+  
+#     if LPModel.SolCount > 0:
+#         print('--> '+LPModel.ModelName+' model solved not-optimally in timelimit',round((time.time()-start_time),2),'secs., solutions ',LPModel.SolCount)
+#         print('--> Objective value: ',round(LPModel.objVal,3)) #,'Optimality gap',model.MIPGap)
+        
+#         # get the best solution found in the timelimit..
+#         LPModel.Params.solutionNumber = 0
+   
+       
+ 
+#     else:
+#         if LPModel.status == 3:
+#             print('--'+LPModel.ModelName+' model is infeasible!!')
+#         else:
+#             print('No solution could be found time limit!!')
+
+
+end_time = time.time()
+CT = end_time - start_time
+#print('obj:', obj.getValue())
+print('CT:', CT)
+#print(grb.GRB.OPTIMAL)
+
+
+#times.append(CT)
+# for v in LPModel.getVars():
+#     print(v.varName, v.x)
+LPModel.printAttr('x')
+
+
+#results:
+#for o in O:
+    #i = o[0]
+    #j = o[1]
+    #print('starting times operation', o,  s[i,j].X)   
+    #print('end times operation', o,  e[i,j].X) 
+    #print('tardiness of operation', o, td[i,j].X)
+    #print('machine of operation', o, beta[i,j,m].X)
+
+    
+# print(objective)
+# print(times)
+# print(statistics.mean(objective))
+# print(statistics.stdev(objective))
+# print(statistics.mean(times))   
+# print(statistics.stdev(times))   
+        
+ 
