@@ -1,1 +1,21 @@
-test 2
+function [kl] = init(I)
+Np =10;
+M= 2;
+VI = zeros(Np, length(I));
+VIM = zeros(2*Np, length(I));
+for i =1:Np
+    VI(i,:)= I(randperm(length(I)));
+    VM= randi([1 M],[Np, length(I)]);
+end
+for i = 1: 2*Np
+    if mod(i,2) == 0
+        VIM(i,:) = VM(i/2,:);
+    else
+        VIM(i,:) = VI((i/2)+1/2,:);
+    end
+    
+    
+end
+kl=VIM
+end
+
