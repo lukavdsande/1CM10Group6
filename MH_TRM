@@ -1,1 +1,115 @@
+function [t] = trm(I, T, TSS)
+VIM = init(I)
+Example_1 = data;
+X = [];
+Np = 10;
+cap = 80
+M = 2;
+B = VIM.';
+C = reshape(B,10,2,[]);
+NewCol = ones(Np, 1);
+for i=1:Np %This for loop makes table 2 of the paper
+    D = C(:,:,i);
+    E= [D NewCol];
+    list =[];
+    for row= 1:10
+        a = E(row,1);
+        
+        
+        if ismember(a, list)
+            E(row,3) = length(find(list(:) == a)) +1 ;
+            list(end+1) = a;
+        else
+            list(end+1) = a;
+        end
+    end
+    E=E(:,[2 1 3]);
+    for row =1: Np
+        
+        Tool_set = (Example_1.I == E(row,2)) & (Example_1.J == E(row, 3));
+        index = find(Tool_set);
+        E(row,4) = Example_1.Tij(index);
+        E(row, 5) = Example_1.sigmaTij(index);
+    end
+    
+    E= sortrows(E,1);
+    rows_1 = E(:,1) ==1;
+    rows_2 = E(:,1)== 2;
+    Machine_1 = E(rows_1,:)
+    length(Machine_1)
+    Machine_2 = E(rows_2,:)
+    
+    TTSS = 0;
+    TmM = [];
+    TSmM = [];
+    score_matrix = [];
+    for z= 1:size(Machine_1,1)
+        if ~ismember(Machine_1(z,4), TmM)
+            TTSS = TTSS + Machine_1(z, 5)
+        else
+            TTSS = TTSS
+        end
+            
+        if TTSS <= cap
+            
+            if ~ismember(Machine_1(z, 4), TmM)
+            TmM(end+1) = Machine_1(z,4);
+            end
+            
+        else
+            
+            for k= z:size(Machine_1,1)
+                if ~ismember(Machine_1(k, 4), TSmM) & ismember(Machine_1(k, 4), TmM)
+                    TSmM(end+1) = Machine_1(k, 4);
+                end
+            end
+                
+            if length(TSmM)== 0
+                score_matrix = TmM.';
+            else
+                TmM_new = setdiff(TmM, TSmM);
+                score_matrix = [TSmM.';TmM_new.'];
+            end
+            
+          
+            
+            for s= 1:length(score_matrix) %daadwerkelijke scores toekennen
+                if score_matrix(s,1) == TSmM.'(s)
+                    score_matrix(s,2) = length(TSmM.') - (s-1);
+                else 
+                    score_matrix(s,2) = 0;
+                end
+            end
+            
+            score_matrix
+            
+            x = cap - Machine_1(z, 5)
+            while TTSS > x
+                for i= 1:size(score_matrix)
+                    if score_matrix(i,2) == 0
+                        TmM(i) = []
+                        TTSS = TTSS - Machine_1(score_matrix(i,5))
+                    end
+                    
+                end
+            end
+            
+                        
+                    
+                
+                
+          
+            end
+            
+    end
+    TmM
+    TSmM
+                 
+          
+    end
+            
+     
+    
+             
+end
 
